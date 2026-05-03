@@ -12,13 +12,17 @@ describe("getTokensInProtocolsInternal", () => {
         tvl: {
           USDC: 150,
           WETH: 50,
+          "bad-USDC": "100",
+          "nan-USDC": Number.NaN,
         },
         ethereum: {
           USDC: 100,
           WETH: 50,
+          "bad-USDC": "100",
         },
         arbitrum: {
           USDC: 50,
+          "nan-USDC": Number.NaN,
         },
         borrowed: {
           USDC: -25,
@@ -90,5 +94,19 @@ describe("getTokensInProtocolsInternal", () => {
         base: 50,
       },
     });
+  });
+
+  it("skips protocols without a token amount map", async () => {
+    const protocol = { name: "Test Protocol", category: "DEX" } as any;
+
+    const result = await getTokensInProtocolsInternal("USDC", {
+      protocolList: [protocol],
+      getLastHourlyTokensUsd: async () => ({
+        tvl: null,
+      }),
+      protocolHasMisrepresentedTokens: async () => false,
+    });
+
+    expect(result).toEqual([]);
   });
 });

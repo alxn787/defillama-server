@@ -4,16 +4,18 @@ import { getLastRecord, hourlyUsdTokensTvl } from "./utils/getLastRecord";
 import { importAdapter } from "./utils/imports/importAdapter";
 import { chainKeyToChainLabelMap } from "./utils/normalizeChain";
 
-const isTokenAmountMap = (value: unknown): value is Record<string, number> =>
+const isTokenAmountMap = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+
+const isValidAmount = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
 const isBaseChainKey = (key: string) => chainKeyToChainLabelMap[key] !== undefined;
 
-const getMatchingTokenAmounts = (tokenTvl: Record<string, number>, symbol: string) => {
+const getMatchingTokenAmounts = (tokenTvl: Record<string, unknown>, symbol: string) => {
   const amountUsd = {} as Record<string, number>;
 
   Object.entries(tokenTvl).forEach(([token, value]) => {
-    if (token.includes(symbol)) {
+    if (token.includes(symbol) && isValidAmount(value)) {
       amountUsd[token] = value;
     }
   });
@@ -28,7 +30,7 @@ const getMatchingTokenAmountsByChain = (lastTvl: Record<string, unknown>, symbol
     if (!isBaseChainKey(storeKey) || !isTokenAmountMap(tokenTvl)) return;
 
     const chainTotal = Object.entries(tokenTvl).reduce((sum, [token, value]) => {
-      if (!token.includes(symbol) || typeof value !== "number") return sum;
+      if (!token.includes(symbol) || !isValidAmount(value)) return sum;
       return sum + value;
     }, 0);
 
@@ -60,7 +62,7 @@ export async function getTokensInProtocolsInternal(symbol: string, {
         getLastHourlyTokensUsd(protocol),
         protocolHasMisrepresentedTokens(protocol),
       ]);
-      if(typeof lastTvl?.tvl !== "object"){
+      if(!isTokenAmountMap(lastTvl?.tvl)){
         return null
       }
       const amountUsd = getMatchingTokenAmounts(lastTvl.tvl, symbol)
