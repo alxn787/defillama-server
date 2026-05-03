@@ -2,6 +2,43 @@ import { successResponse, wrap, IResponse, errorResponse } from "./utils/shared"
 import protocols, { Protocol} from "./protocols/data";
 import { getLastRecord, hourlyUsdTokensTvl } from "./utils/getLastRecord";
 import { importAdapter } from "./utils/imports/importAdapter";
+import { chainKeyToChainLabelMap } from "./utils/normalizeChain";
+
+const isTokenAmountMap = (value: unknown): value is Record<string, number> =>
+  value !== null && typeof value === "object" && !Array.isArray(value);
+
+const isBaseChainKey = (key: string) => chainKeyToChainLabelMap[key] !== undefined;
+
+const getMatchingTokenAmounts = (tokenTvl: Record<string, number>, symbol: string) => {
+  const amountUsd = {} as Record<string, number>;
+
+  Object.entries(tokenTvl).forEach(([token, value]) => {
+    if (token.includes(symbol)) {
+      amountUsd[token] = value;
+    }
+  });
+
+  return amountUsd;
+};
+
+const getMatchingTokenAmountsByChain = (lastTvl: Record<string, unknown>, symbol: string) => {
+  const amountUsdByChain = {} as Record<string, number>;
+
+  Object.entries(lastTvl).forEach(([storeKey, tokenTvl]) => {
+    if (!isBaseChainKey(storeKey) || !isTokenAmountMap(tokenTvl)) return;
+
+    const chainTotal = Object.entries(tokenTvl).reduce((sum, [token, value]) => {
+      if (!token.includes(symbol) || typeof value !== "number") return sum;
+      return sum + value;
+    }, 0);
+
+    if (chainTotal !== 0) {
+      amountUsdByChain[storeKey] = chainTotal;
+    }
+  });
+
+  return amountUsdByChain;
+};
 
 async function _protocolHasMisrepresentedTokens(protocol: Protocol){
   const module = await importAdapter(protocol);
@@ -26,21 +63,16 @@ export async function getTokensInProtocolsInternal(symbol: string, {
       if(typeof lastTvl?.tvl !== "object"){
         return null
       }
-      const amountUsd = {} as any
-      let matches = 0
-      Object.entries(lastTvl.tvl).forEach(([s, v])=>{
-        if(s.includes(symbol)){
-          amountUsd[s] = v;
-          matches++;
-        }
-      })
-      if(matches === 0){
+      const amountUsd = getMatchingTokenAmounts(lastTvl.tvl, symbol)
+      if(Object.keys(amountUsd).length === 0){
         return null
       }
+      const amountUsdByChain = getMatchingTokenAmountsByChain(lastTvl, symbol)
       return {
           name: protocol.name,
           category: protocol.category,
           amountUsd,
+          amountUsdByChain,
           misrepresentedTokens,
       }
     })
