@@ -24,18 +24,15 @@ const getMatchingTokenAmounts = (tokenTvl: Record<string, unknown>, symbol: stri
 };
 
 const getMatchingTokenAmountsByChain = (lastTvl: Record<string, unknown>, symbol: string) => {
-  const amountUsdByChain = {} as Record<string, number>;
+  const amountUsdByChain = {} as Record<string, Record<string, number>>;
 
   Object.entries(lastTvl).forEach(([storeKey, tokenTvl]) => {
     if (!isBaseChainKey(storeKey) || !isTokenAmountMap(tokenTvl)) return;
 
-    const chainTotal = Object.entries(tokenTvl).reduce((sum, [token, value]) => {
-      if (!token.includes(symbol) || !isValidAmount(value)) return sum;
-      return sum + value;
-    }, 0);
+    const chainAmounts = getMatchingTokenAmounts(tokenTvl, symbol);
 
-    if (chainTotal !== 0) {
-      amountUsdByChain[storeKey] = chainTotal;
+    if (Object.keys(chainAmounts).length > 0) {
+      amountUsdByChain[storeKey] = chainAmounts;
     }
   });
 
@@ -59,7 +56,7 @@ export async function getTokensInProtocolsInternal(symbol: string, {
   return (await Promise.all(
     protocolList.map(async (protocol) => {
       const lastTvl = await getLastHourlyTokensUsd(protocol);
-      if(typeof lastTvl?.tvl !== "object"){
+      if(!isTokenAmountMap(lastTvl?.tvl)){
         return null
       }
       const amountUsd = getMatchingTokenAmounts(lastTvl.tvl, symbol)

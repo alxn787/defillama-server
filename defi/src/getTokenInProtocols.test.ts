@@ -34,9 +34,8 @@ describe("getTokensInProtocolsInternal", () => {
           USDC: -25,
         },
       }),
-      protocolHasMisrepresentedTokens: async () => false,
+      protocolHasMisrepresentedTokens: () => false,
     });
-
     expect(result).toEqual([
       {
         name: "Test Protocol",
@@ -45,15 +44,19 @@ describe("getTokensInProtocolsInternal", () => {
           USDC: 150,
         },
         amountUsdByChain: {
-          ethereum: 100,
-          arbitrum: 50,
+          ethereum: {
+            USDC: 100,
+          },
+          arbitrum: {
+            USDC: 50,
+          },
         },
         misrepresentedTokens: false,
       },
     ]);
   });
 
-  it("aggregates multiple matching token keys inside each chain bucket", async () => {
+  it("breaks down multiple matching token keys inside each chain bucket", async () => {
     const protocol = { name: "Test Protocol", category: "DEX" } as any;
 
     const result = await getTokensInProtocolsInternal("USD", {
@@ -81,17 +84,21 @@ describe("getTokensInProtocolsInternal", () => {
           USDT: 20,
         },
       }),
-      protocolHasMisrepresentedTokens: async () => false,
+      protocolHasMisrepresentedTokens: () => false,
     });
 
-    expect(result[0]).toMatchObject({
-      amountUsd: {
-        USDC: 100,
-        USDT: 25,
+    expect(result[0].amountUsd).toEqual({
+      USDC: 100,
+      USDT: 25,
+    });
+    expect(result[0].amountUsdByChain).toEqual({
+      ethereum: {
+        USDC: 70,
+        USDT: 5,
       },
-      amountUsdByChain: {
-        ethereum: 75,
-        base: 50,
+      base: {
+        USDC: 30,
+        USDT: 20,
       },
     });
   });
@@ -104,9 +111,84 @@ describe("getTokensInProtocolsInternal", () => {
       getLastHourlyTokensUsd: async () => ({
         tvl: null,
       }),
-      protocolHasMisrepresentedTokens: async () => false,
+      protocolHasMisrepresentedTokens: () => false,
     });
 
     expect(result).toEqual([]);
+  });
+
+  it("skips protocols with no stored record", async () => {
+    const protocol = { name: "Test Protocol", category: "DEX" } as any;
+
+    const result = await getTokensInProtocolsInternal("USDC", {
+      protocolList: [protocol],
+      getLastHourlyTokensUsd: async () => undefined,
+      protocolHasMisrepresentedTokens: () => false,
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it("skips protocols whose only matching amounts are not finite numbers", async () => {
+    const protocol = { name: "Test Protocol", category: "DEX" } as any;
+
+    const result = await getTokensInProtocolsInternal("USDC", {
+      protocolList: [protocol],
+      getLastHourlyTokensUsd: async () => ({
+        tvl: {
+          USDC: "100",
+          "nan-USDC": Number.NaN,
+          WETH: 50,
+        },
+      }),
+      protocolHasMisrepresentedTokens: () => false,
+    });
+
+    expect(result).toEqual([]);
+  });
+
+  it("returns an empty chain breakdown when the record only has an aggregate tvl section", async () => {
+    const protocol = { name: "Test Protocol", category: "DEX" } as any;
+
+    const result = await getTokensInProtocolsInternal("USDC", {
+      protocolList: [protocol],
+      getLastHourlyTokensUsd: async () => ({
+        tvl: {
+          USDC: 100,
+        },
+      }),
+      protocolHasMisrepresentedTokens: () => false,
+    });
+
+    expect(result[0].amountUsd).toEqual({ USDC: 100 });
+    expect(result[0].amountUsdByChain).toEqual({});
+  });
+
+  it("ignores malformed chain buckets and unregistered chain keys", async () => {
+    const protocol = { name: "Test Protocol", category: "DEX" } as any;
+
+    const result = await getTokensInProtocolsInternal("USDC", {
+      protocolList: [protocol],
+      getLastHourlyTokensUsd: async () => ({
+        tvl: {
+          USDC: 100,
+        },
+        ethereum: 12345,
+        arbitrum: null,
+        "not-a-real-chain": {
+          USDC: 100,
+        },
+        base: {
+          USDC: 100,
+        },
+      }),
+      protocolHasMisrepresentedTokens: () => false,
+    });
+
+    expect(result[0].amountUsdByChain).toEqual({
+      base: {
+        USDC: 100,
+      },
+    });
   });
 });
