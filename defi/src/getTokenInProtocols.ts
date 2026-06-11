@@ -42,8 +42,8 @@ const getMatchingTokenAmountsByChain = (lastTvl: Record<string, unknown>, symbol
   return amountUsdByChain;
 };
 
-async function _protocolHasMisrepresentedTokens(protocol: Protocol){
-  const module = await importAdapter(protocol);
+function _protocolHasMisrepresentedTokens(protocol: Protocol): boolean{
+  const module = importAdapter(protocol);
   return module.misrepresentedTokens
 }
 
@@ -58,11 +58,8 @@ export async function getTokensInProtocolsInternal(symbol: string, {
 } = {}){
   return (await Promise.all(
     protocolList.map(async (protocol) => {
-      const [lastTvl, misrepresentedTokens] = await Promise.all([
-        getLastHourlyTokensUsd(protocol),
-        protocolHasMisrepresentedTokens(protocol),
-      ]);
-      if(!isTokenAmountMap(lastTvl?.tvl)){
+      const lastTvl = await getLastHourlyTokensUsd(protocol);
+      if(typeof lastTvl?.tvl !== "object"){
         return null
       }
       const amountUsd = getMatchingTokenAmounts(lastTvl.tvl, symbol)
@@ -70,6 +67,7 @@ export async function getTokensInProtocolsInternal(symbol: string, {
         return null
       }
       const amountUsdByChain = getMatchingTokenAmountsByChain(lastTvl, symbol)
+      const misrepresentedTokens = protocolHasMisrepresentedTokens(protocol);
       return {
           name: protocol.name,
           category: protocol.category,
